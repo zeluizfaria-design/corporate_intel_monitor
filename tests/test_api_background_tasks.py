@@ -7,7 +7,24 @@ import api.main as api_main
 
 
 class ApiBackgroundTaskTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        api_main._collection_jobs.clear()
+
+    def tearDown(self) -> None:
+        api_main._collection_jobs.clear()
+
     async def test_run_collection_bg_logs_summary_on_success(self) -> None:
+        api_main._collection_jobs["job-1"] = {
+            "job_id": "job-1",
+            "status": "queued",
+            "ticker": "NVDA",
+            "days_back": 7,
+            "queued_at": "2026-03-06T00:00:00+00:00",
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+            "summary": None,
+        }
         mock_logger = MagicMock()
         with (
             patch(
@@ -23,13 +40,28 @@ class ApiBackgroundTaskTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("api.main.logging.getLogger", return_value=mock_logger),
         ):
-            await api_main._run_collection_bg("nvda", 7)
+            await api_main._run_collection_bg("job-1", "nvda", 7)
 
         mock_logger.info.assert_called_once()
         info_args = mock_logger.info.call_args[0]
         self.assertIn("NVDA", info_args)
+        self.assertEqual(api_main._collection_jobs["job-1"]["status"], "completed")
+        self.assertIsNotNone(api_main._collection_jobs["job-1"]["started_at"])
+        self.assertIsNotNone(api_main._collection_jobs["job-1"]["finished_at"])
+        self.assertIsNotNone(api_main._collection_jobs["job-1"]["summary"])
 
     async def test_run_collection_bg_logs_exception_on_failure(self) -> None:
+        api_main._collection_jobs["job-2"] = {
+            "job_id": "job-2",
+            "status": "queued",
+            "ticker": "NVDA",
+            "days_back": 7,
+            "queued_at": "2026-03-06T00:00:00+00:00",
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+            "summary": None,
+        }
         mock_logger = MagicMock()
         with (
             patch(
@@ -38,9 +70,12 @@ class ApiBackgroundTaskTests(unittest.IsolatedAsyncioTestCase):
             ),
             patch("api.main.logging.getLogger", return_value=mock_logger),
         ):
-            await api_main._run_collection_bg("nvda", 7)
+            await api_main._run_collection_bg("job-2", "nvda", 7)
 
         mock_logger.exception.assert_called_once()
+        self.assertEqual(api_main._collection_jobs["job-2"]["status"], "failed")
+        self.assertEqual(api_main._collection_jobs["job-2"]["error"], "boom")
+        self.assertIsNotNone(api_main._collection_jobs["job-2"]["finished_at"])
 
 
 if __name__ == "__main__":

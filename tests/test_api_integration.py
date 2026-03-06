@@ -3,6 +3,7 @@
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -19,10 +20,12 @@ class ApiIntegrationTests(unittest.TestCase):
         self.db_path = db_path
         self.test_db = Database(path=db_path)
         api_main._db = self.test_db
+        api_main._collection_jobs.clear()
         self.client = TestClient(api_main.app)
         self._seed_articles()
 
     def tearDown(self) -> None:
+        api_main._collection_jobs.clear()
         self.test_db._conn.close()
         if self.db_path.exists():
             self.db_path.unlink()
@@ -130,6 +133,33 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/csv", response.headers.get("content-type", ""))
         self.assertIn("id,source,source_type", response.text)
+
+    def test_collect_job_status(self) -> None:
+        with patch(
+            "api.main._get_run_collection",
+            return_value=AsyncMock(
+                return_value={
+                    "ticker": "NVDA",
+                    "days_back": 7,
+                    "saved_articles": 2,
+                    "collector_failures": [],
+                }
+            ),
+        ):
+            start = self.client.post("/collect", json={"ticker": "NVDA", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertEqual(payload["status"], "started")
+        self.assertEqual(payload["ticker"], "NVDA")
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["ticker"], "NVDA")
+        self.assertEqual(job["summary"]["saved_articles"], 2)
 
 
 if __name__ == "__main__":

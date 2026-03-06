@@ -4,6 +4,7 @@ import csv
 import logging
 from datetime import UTC, datetime
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, Response
@@ -20,6 +21,7 @@ app = FastAPI(
 
 _db = Database()
 _settings = Settings()
+_collection_jobs: dict[str, dict] = {}
 
 # Seed watchlist se estiver vazia
 _db.seed_watchlist(_settings.target_tickers, _settings.dual_listed_map)
@@ -60,6 +62,18 @@ class SocialSourceStatus(BaseModel):
     enabled: bool
     security_notes: str
     compliance_notes: str
+
+
+class CollectionStatusResponse(BaseModel):
+    job_id: str
+    status: str
+    ticker: str
+    days_back: int
+    queued_at: str
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    summary: Optional[dict] = None
 
 
 @app.get("/health")
@@ -118,8 +132,30 @@ def get_summary(ticker: str, days: int = Query(default=7, ge=1, le=30)):
 @app.post("/collect")
 async def trigger_collection(request: CollectionRequest, background_tasks: BackgroundTasks):
     """Dispara coleta assíncrona para um ticker."""
-    background_tasks.add_task(_run_collection_bg, request.ticker, request.days_back)
-    return {"status": "started", "ticker": request.ticker, "days_back": request.days_back}
+    ticker_upper = request.ticker.upper()
+    job_id = uuid4().hex
+    _collection_jobs[job_id] = {
+        "job_id": job_id,
+        "status": "queued",
+        "ticker": ticker_upper,
+        "days_back": request.days_back,
+        "queued_at": datetime.now(UTC).isoformat(),
+        "started_at": None,
+        "finished_at": None,
+        "error": None,
+        "summary": None,
+    }
+    background_tasks.add_task(_run_collection_bg, job_id, ticker_upper, request.days_back)
+    return {"status": "started", "job_id": job_id, "ticker": ticker_upper, "days_back": request.days_back}
+
+
+@app.get("/collect/{job_id}", response_model=CollectionStatusResponse)
+def get_collection_status(job_id: str):
+    """Consulta status detalhado de uma coleta assÃ­ncrona em background."""
+    job = _collection_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Collection job {job_id} not found")
+    return job
 
 
 @app.get("/watchlist", response_model=list[WatchlistItem])
@@ -234,15 +270,28 @@ def remove_from_watchlist(ticker: str):
     return {"status": "removed", "ticker": ticker.upper()}
 
 
-async def _run_collection_bg(ticker: str, days_back: int):
+async def _run_collection_bg(job_id: str, ticker: str, days_back: int):
     run_collection = _get_run_collection()
     logger = logging.getLogger(__name__)
     ticker_upper = ticker.upper()
+    job = _collection_jobs.get(job_id)
+    if job:
+        job["status"] = "running"
+        job["started_at"] = datetime.now(UTC).isoformat()
     try:
         summary = await run_collection(ticker_upper, _settings, days_back=days_back)
-    except Exception:
+    except Exception as exc:
+        if job:
+            job["status"] = "failed"
+            job["finished_at"] = datetime.now(UTC).isoformat()
+            job["error"] = str(exc)
         logger.exception("[API] collection failed for %s", ticker_upper)
         return
+
+    if job:
+        job["status"] = "completed"
+        job["finished_at"] = datetime.now(UTC).isoformat()
+        job["summary"] = summary
 
     logger.info(
         "[API] collection finished for %s (saved=%s, failed_collectors=%s)",
