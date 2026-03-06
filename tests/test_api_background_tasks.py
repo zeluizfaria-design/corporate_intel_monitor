@@ -10,14 +10,17 @@ class ApiBackgroundTaskTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_collection_bg_logs_summary_on_success(self) -> None:
         mock_logger = MagicMock()
         with (
-            patch("main.run_collection", new=AsyncMock(
-                return_value={
-                    "ticker": "NVDA",
-                    "days_back": 7,
-                    "saved_articles": 3,
-                    "collector_failures": [{"collector": "XCollector", "error": "boom"}],
-                }
-            )),
+            patch(
+                "api.main._get_run_collection",
+                return_value=AsyncMock(
+                    return_value={
+                        "ticker": "NVDA",
+                        "days_back": 7,
+                        "saved_articles": 3,
+                        "collector_failures": [{"collector": "XCollector", "error": "boom"}],
+                    }
+                ),
+            ),
             patch("api.main.logging.getLogger", return_value=mock_logger),
         ):
             await api_main._run_collection_bg("nvda", 7)
@@ -29,7 +32,10 @@ class ApiBackgroundTaskTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_collection_bg_logs_exception_on_failure(self) -> None:
         mock_logger = MagicMock()
         with (
-            patch("main.run_collection", new=AsyncMock(side_effect=RuntimeError("boom"))),
+            patch(
+                "api.main._get_run_collection",
+                return_value=AsyncMock(side_effect=RuntimeError("boom")),
+            ),
             patch("api.main.logging.getLogger", return_value=mock_logger),
         ):
             await api_main._run_collection_bg("nvda", 7)

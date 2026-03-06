@@ -235,7 +235,7 @@ def remove_from_watchlist(ticker: str):
 
 
 async def _run_collection_bg(ticker: str, days_back: int):
-    from main import run_collection
+    run_collection = _get_run_collection()
     logger = logging.getLogger(__name__)
     ticker_upper = ticker.upper()
     try:
@@ -250,6 +250,11 @@ async def _run_collection_bg(ticker: str, days_back: int):
         summary.get("saved_articles", 0),
         len(summary.get("collector_failures", [])),
     )
+
+
+def _get_run_collection():
+    from main import run_collection
+    return run_collection
 
 
 @app.get("/dashboard/{ticker}", response_class=HTMLResponse)
