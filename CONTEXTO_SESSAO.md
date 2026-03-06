@@ -16,6 +16,21 @@
 
 ## Mudancas aplicadas nesta sessao
 
+### Encerramento formal da P8 (2026-03-06)
+- Resultado formal registrado: `APROVADO`.
+- Escopo considerado encerrado:
+  - UX do dashboard React (consulta, feed, watchlist, filtros, ordenacao, paginacao, visualizacoes por periodo, loading granular).
+  - fluxo de coleta com `POST /collect` + observabilidade de status em `GET /collect/{job_id}`, incluindo timeout, erro de polling, reconsulta manual e `sucesso parcial`.
+  - exportacao CSV e componentes de apoio (painel social e identidade local).
+- Evidencias utilizadas no fechamento:
+  - CI local completo aprovado com `scripts/run_ci.ps1`.
+  - backend `24/24` testes passando.
+  - frontend `14/14` testes passando + `npm run build` OK.
+  - smoke HTTP com processos reais retornando `200` para `/health`, `/social/sources`, `/articles/NVDA/summary`, `/export/NVDA` e frontend `/`.
+- Decisao final:
+  - P8 concluida e encerrada formalmente.
+  - continuidade do projeto deve seguir para backlog pos-P8.
+
 ### Atualizacao de continuidade (fechamento tecnico revalidado em 2026-03-06)
 - Pipeline local completo reexecutado com sucesso:
   - comando: `powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1`

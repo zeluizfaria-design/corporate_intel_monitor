@@ -1,6 +1,6 @@
 # Corporate Intelligence Monitor - Handoff Completo
 **Data:** 2026-03-06  
-**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) implementada com backlog tecnico 1-4 concluido, polling de coleta por `job_id` integrado na UI e aviso de `sucesso parcial` para falhas de coletores; validacao tecnica final reexecutada nesta continuidade (`scripts/run_ci.ps1` OK, backend `24/24`, frontend `14/14` + build, smoke HTTP real OK). Pendente apenas validacao visual/manual humana em browser para fechamento formal da UX.
+**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) encerrada formalmente em 2026-03-06 com validacao manual `APROVADO`, apos revalidacao tecnica final (`scripts/run_ci.ps1` OK, backend `24/24`, frontend `14/14` + build, smoke HTTP real OK).
 
 ## Leitura rapida para nova janela
 - Snapshot curto: `RESUMO_CONTEXTO_JANELA.md`
@@ -139,14 +139,8 @@ Aplicacao no projeto:
 
 ## 4. Lacunas atuais para a proxima janela
 
-1. Executar validacao visual/manual completa no browser para fechamento da P8.
-2. Confirmar UX final dos fluxos novos:
-   - ordenacao/paginacao do feed
-   - visualizacoes por periodo
-   - loading granular por painel
-3. Validar manualmente no browser a UX final do polling de status da coleta por `job_id` ja integrado no frontend.
-4. Registrar decisao formal de sign-off (`APROVADO` ou `REPROVADO`) no `CONTEXTO_SESSAO.md`, com evidencias e eventuais ajustes residuais.
-5. Se a porta `5173` estiver ocupada no bootstrap local, validar na URL alternativa exibida pelo Vite (ex.: `http://127.0.0.1:5174`).
+1. Sem lacunas abertas da P8 (frontend) apos sign-off `APROVADO` em 2026-03-06.
+2. Proximas janelas devem focar apenas em evolucao de roadmap pos-P8.
 
 ---
 

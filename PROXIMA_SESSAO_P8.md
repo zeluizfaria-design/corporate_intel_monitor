@@ -6,6 +6,17 @@
 ## Objetivo
 Executar apenas o sign-off visual/manual final em browser para encerramento formal da P8.
 
+## Encerramento formal (2026-03-06)
+- Resultado da validacao manual P8: `APROVADO`.
+- Evidencias consolidadas:
+  - URL validada: `http://localhost:5173` (ou `http://127.0.0.1:5174` quando `5173` ocupada).
+  - ticker base de validacao: `NVDA`.
+  - fluxo `Coletar agora` com observabilidade por `job_id` validado, incluindo reconsulta manual de status.
+  - exportacao CSV, watchlist, filtro por `source_type`, ordenacao, paginacao, visualizacoes e loading granular validados.
+- Decisao:
+  - P8 encerrada formalmente.
+  - backlog imediato de UX da P8 zerado.
+
 ## Status da execucao (2026-03-06)
 - Validacao final desta continuidade:
   - `powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1` -> pipeline completo OK.
