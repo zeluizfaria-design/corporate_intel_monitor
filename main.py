@@ -22,16 +22,29 @@ from config.settings                       import Settings
 async def run_collection(ticker: str, settings: Settings, days_back: int = 30):
     db        = Database()
     sentiment = SentimentAnalyzer()
+    saved_articles = 0
+    collector_failures: list[dict[str, str]] = []
+
+    def _save_and_count(article) -> None:
+        nonlocal saved_articles
+        if _save(article, db, sentiment):
+            saved_articles += 1
+
+    def _register_failure(collector_name: str, exc: Exception) -> None:
+        collector_failures.append(
+            {"collector": collector_name, "error": str(exc)}
+        )
+        print(f"[WARN] {collector_name} falhou: {exc}")
 
     # --- Fatos Relevantes (BR via CVM  ou  US via SEC EDGAR) ---
     async with MaterialFactsRouter() as router:
         async for article in router.collect(ticker, days_back=days_back):
-            _save(article, db, sentiment)
+            _save_and_count(article)
 
     # --- Notícias ---
     async with NewsCollector(rate_limit_rps=1.0) as collector:
         async for article in collector.collect(ticker):
-            _save(article, db, sentiment)
+            _save_and_count(article)
 
     # --- Redes Sociais (X, Reddit, LinkedIn, Discord, Telegram, StockTwits) ---
     # Instancia apenas os coletores com credenciais configuradas no .env
@@ -40,12 +53,12 @@ async def run_collection(ticker: str, settings: Settings, days_back: int = 30):
             if hasattr(collector, "__aenter__"):
                 async with collector:
                     async for article in collector.collect(ticker):
-                        _save(article, db, sentiment)
+                        _save_and_count(article)
             else:
                 async for article in collector.collect(ticker):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] {collector.__class__.__name__} falhou: {e}")
+            _register_failure(collector.__class__.__name__, e)
 
     # --- Mercados de Previsão / Apostas ---
     for collector in build_betting_collectors(settings):
@@ -53,12 +66,12 @@ async def run_collection(ticker: str, settings: Settings, days_back: int = 30):
             if hasattr(collector, "__aenter__"):
                 async with collector:
                     async for article in collector.collect(ticker):
-                        _save(article, db, sentiment)
+                        _save_and_count(article)
             else:
                 async for article in collector.collect(ticker):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] {collector.__class__.__name__} falhou: {e}")
+            _register_failure(collector.__class__.__name__, e)
 
     # --- Insiders: SEC EDGAR Form 4 (empresas US) ---
     market = detect_market(ticker)
@@ -66,9 +79,9 @@ async def run_collection(ticker: str, settings: Settings, days_back: int = 30):
         try:
             async with InsiderTradingCollector(rate_limit_rps=5.0) as collector:
                 async for article in collector.collect(ticker, days_back=days_back):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] InsiderTradingCollector falhou: {e}")
+            _register_failure("InsiderTradingCollector", e)
 
         # --- Políticos: STOCK Act via Quiver Quant (empresas US) ---
         try:
@@ -76,26 +89,33 @@ async def run_collection(ticker: str, settings: Settings, days_back: int = 30):
                 rate_limit_rps=0.5, api_key=settings.quiver_api_key
             ) as collector:
                 async for article in collector.collect(ticker, days_back=days_back):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] PoliticianTradingCollector falhou: {e}")
+            _register_failure("PoliticianTradingCollector", e)
 
         # --- Políticos: Capitol Trades (alternativa pública, sem API key) ---
         try:
             async with CapitolTradesCollector(rate_limit_rps=0.5) as collector:
                 async for article in collector.collect(ticker, days_back=days_back):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] CapitolTradesCollector falhou: {e}")
+            _register_failure("CapitolTradesCollector", e)
 
     # --- Insiders: CVM (empresas B3) ---
     if market == "BR":
         try:
             async with CVMInsiderCollector(rate_limit_rps=0.5) as collector:
                 async for article in collector.collect(ticker, days_back=days_back):
-                    _save(article, db, sentiment)
+                    _save_and_count(article)
         except Exception as e:
-            print(f"[WARN] CVMInsiderCollector falhou: {e}")
+            _register_failure("CVMInsiderCollector", e)
+
+    return {
+        "ticker": ticker.upper(),
+        "days_back": days_back,
+        "saved_articles": saved_articles,
+        "collector_failures": collector_failures,
+    }
 
 
 async def run_dual_listed(
@@ -145,6 +165,7 @@ def _save(article, db: Database, sentiment: SentimentAnalyzer):
         market = detect_market(article.company_ticker or "")
         line = f"[{market}][{article.source_type}][{article.source}] {article.title[:80]}"
         print(line.encode(sys.stdout.encoding or "utf-8", errors="replace").decode(sys.stdout.encoding or "utf-8", errors="replace"))
+    return inserted
 
 
 if __name__ == "__main__":

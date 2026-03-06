@@ -236,7 +236,20 @@ def remove_from_watchlist(ticker: str):
 
 async def _run_collection_bg(ticker: str, days_back: int):
     from main import run_collection
-    await run_collection(ticker, _settings, days_back=days_back)
+    logger = logging.getLogger(__name__)
+    ticker_upper = ticker.upper()
+    try:
+        summary = await run_collection(ticker_upper, _settings, days_back=days_back)
+    except Exception:
+        logger.exception("[API] collection failed for %s", ticker_upper)
+        return
+
+    logger.info(
+        "[API] collection finished for %s (saved=%s, failed_collectors=%s)",
+        ticker_upper,
+        summary.get("saved_articles", 0),
+        len(summary.get("collector_failures", [])),
+    )
 
 
 @app.get("/dashboard/{ticker}", response_class=HTMLResponse)
