@@ -125,6 +125,12 @@ Opcao para pular reinstalacao de dependencias Node:
 powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1 -SkipNpmCi
 ```
 
+Se houver `spawn EPERM` no `npm ci` em ambientes restritos, use fallback controlado:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1 -AllowNpmCiEpermFallback
+```
+
 ## CI remoto (GitHub Actions)
 
 Workflow disponivel em `.github/workflows/ci.yml`, executado em:
@@ -133,4 +139,4 @@ Workflow disponivel em `.github/workflows/ci.yml`, executado em:
 
 Etapas do workflow:
 - Frontend: `npm ci` -> `npm run test:run` -> `npm run build`
-- Backend: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v`
+- Backend: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`

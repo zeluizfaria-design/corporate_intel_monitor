@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipNpmCi
+    [switch]$SkipNpmCi,
+    [switch]$AllowNpmCiEpermFallback
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,7 +42,16 @@ try {
     if (-not $SkipNpmCi) {
         Write-Host "[CI] Running npm ci"
         & $npmCmd ci --cache $npmCacheDir
-        Assert-LastExitCode "npm ci"
+        if ($LASTEXITCODE -ne 0) {
+            $nodeModulesDir = Join-Path $frontendDir "node_modules"
+            $canFallback = $AllowNpmCiEpermFallback -and $LASTEXITCODE -eq -4048 -and (Test-Path $nodeModulesDir)
+            if ($canFallback) {
+                Write-Warning "npm ci falhou com EPERM (exit -4048). Seguindo com node_modules existente por fallback controlado."
+            }
+            else {
+                Assert-LastExitCode "npm ci"
+            }
+        }
     }
 
     Write-Host "[CI] Running frontend tests"
