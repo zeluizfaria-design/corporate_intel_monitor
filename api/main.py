@@ -2,7 +2,7 @@
 import io
 import csv
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
@@ -64,7 +64,7 @@ class SocialSourceStatus(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now(UTC).isoformat()}
 
 
 @app.get("/articles/{ticker}", response_model=list[ArticleResponse])

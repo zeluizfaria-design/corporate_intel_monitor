@@ -1,7 +1,7 @@
 """Integration tests for FastAPI endpoints using a temporary DuckDB database."""
 
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,7 +28,7 @@ class ApiIntegrationTests(unittest.TestCase):
             self.db_path.unlink()
 
     def _seed_articles(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         self.test_db.upsert(
             {
