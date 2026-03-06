@@ -1,5 +1,10 @@
 # Corporate Intelligence Monitor - Contexto de Sessao
-> Atualizado em 2026-03-06 para retomada em nova janela de contexto.
+> Atualizado em 2026-03-06 (janela mais recente) para retomada em nova janela de contexto.
+
+## Como usar este arquivo na proxima janela
+1. Ler primeiro `RESUMO_CONTEXTO_JANELA.md` para snapshot rapido.
+2. Usar este arquivo para historico consolidado e evidencias tecnicas.
+3. Executar o checklist operacional em `PROXIMA_SESSAO_P8.md`.
 
 ## Estado resumido
 - Backend funcional (coletores + NLP + DuckDB + API).
@@ -10,6 +15,124 @@
 - Testes de componentes configurados com Vitest + React Testing Library.
 
 ## Mudancas aplicadas nesta sessao
+
+### Atualizacao de continuidade (fechamento tecnico revalidado em 2026-03-06)
+- Pipeline local completo reexecutado com sucesso:
+  - comando: `powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1`
+  - frontend: `npm ci` + `npm run test:run` + `npm run build` OK
+  - backend: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v` com `24/24` testes passando
+- Smoke de integracao com processos reais reexecutado com sucesso:
+  - `GET /health` -> `200`
+  - `GET /social/sources` -> `200`
+  - `GET /articles/NVDA/summary?days=7` -> `200`
+  - `GET /export/NVDA?days=7` -> `200` (`text/csv`)
+  - frontend `/` -> `200` (`text/html`)
+- Observacoes operacionais:
+  - neste ambiente, `npm ci` e `vite dev` podem falhar com `spawn EPERM` em sandbox; execucao escalada contorna.
+  - em parte das execucoes o Vite pode subir em `5174` quando `5173` ja estiver ocupada.
+- Conclusao da continuidade:
+  - fechamento tecnico da P8 mantido como aprovado.
+  - resta somente o sign-off visual/manual humano em browser para encerramento formal.
+
+### Atualizacao incremental desta janela (retencao de jobs de coleta)
+- Backend (`api/main.py`):
+  - adicionada limpeza automatica de `_collection_jobs` no `POST /collect`.
+  - politica de retencao aplicada:
+    - remover jobs finalizados (`completed`/`failed`) com mais de 24h.
+    - limitar armazenamento em memoria para no maximo 500 jobs (remove os mais antigos em overflow).
+  - objetivo: evitar crescimento indefinido do estado em memoria da API em execucoes prolongadas.
+- Testes adicionados/ajustados:
+  - `tests/test_api_background_tasks.py`:
+    - `test_cleanup_collection_jobs_removes_old_finished_jobs`.
+  - `tests/test_api_integration.py`:
+    - `test_collect_trigger_cleans_stale_finished_jobs`.
+- Revalidacao tecnica desta continuidade:
+  - backend:
+    - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+    - resultado: `20/20` testes passando.
+  - frontend (execucao escalada devido `spawn EPERM` do `esbuild` no sandbox):
+    - `npm.cmd run test:run` -> `14/14` passando.
+    - `npm.cmd run build` -> sucesso.
+
+### Atualizacao incremental desta janela (cenarios E2E de indisponibilidade parcial real)
+- Backend (integracao API + fluxo real de coleta):
+  - novo cenario E2E integrado em `tests/test_api_integration.py` para indisponibilidade parcial real de coletores sociais:
+    - executa `POST /collect` com `run_collection` real.
+    - simula um coletor social saudavel e outro indisponivel.
+    - valida `GET /collect/{job_id}` com status final `completed` e `collector_failures` preenchido.
+  - novo cenario E2E integrado para indisponibilidade parcial real de coletores de betting:
+    - executa `POST /collect` com `run_collection` real.
+    - simula um coletor de betting saudavel e outro indisponivel.
+    - valida `GET /collect/{job_id}` com status final `completed` e falha parcial registrada.
+- Resultado tecnico:
+  - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+  - baseline atualizada para `24/24` testes backend passando.
+  - cobertura adicional:
+    - degradacao multipla (falha simultanea social + betting) com job `completed` e duas entradas em `collector_failures`.
+    - degradacao multipla total dos coletores secundarios (social + betting indisponiveis) com `saved_articles=0` e status final `completed`.
+
+### Atualizacao de fechamento desta janela (2026-03-06)
+- Revalidacao backend executada novamente com sucesso:
+  - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+  - resultado: `18/18` testes passando.
+- Revalidacao frontend executada novamente com sucesso:
+  - `npm run test:run` -> `14/14` testes passando.
+  - `npm run build` -> build de producao concluido.
+- Observacao de ambiente desta janela (shell/sandbox):
+  - `npm ci` pode falhar com `EPERM` em `esbuild` por lock/restricao de execucao local.
+  - no ambiente atual, foi necessario executar validacoes frontend em modo escalado para contornar `spawn EPERM` do `esbuild`.
+- Estado de fechamento:
+  - pendente apenas validacao visual/manual em browser para encerramento formal da UX da P8.
+
+### Atualizacao final desta janela (resiliencia UX + cobertura)
+- Frontend:
+  - card de status de coleta agora explicita `sucesso parcial` quando o job termina como `completed` com `collector_failures` no `summary`.
+  - novo aviso visual: "Coleta concluida com falhas parciais em N coletor(es)".
+  - testes frontend atualizados para `14/14` (Vitest), incluindo cenario de coleta concluida com falhas parciais.
+- Backend (integracao API):
+  - novo cenario em `tests/test_api_integration.py` para job `completed` com `collector_failures` (sem promover para `failed`).
+  - baseline backend atualizada para `18/18` testes passando:
+    - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+
+### Atualizacao incremental desta janela (polling + resiliencia adicional)
+- Frontend:
+  - polling do status de coleta por `job_id` integrado no fluxo `Coletar agora`.
+  - card dedicado de status da coleta (estado, `job_id`, ticker, janela e timestamps).
+  - acao manual `Atualizar status` no card de coleta para reconsultar o mesmo `job_id` sem iniciar novo job.
+  - tratamento explicito de erro quando `GET /collect/{job_id}` falha durante polling.
+  - testes frontend atualizados para `14/14` (Vitest), cobrindo sucesso/falha do polling, erro no endpoint de status, timeout de polling, recuperacao via reconsulta manual e sucesso parcial.
+- Backend (integracao API):
+  - novos cenarios em `tests/test_api_integration.py`:
+    - job finalizado com `failed` quando coletor levanta excecao.
+    - `GET /collect/{job_id}` com job inexistente retornando `404`.
+  - novo cenario em `tests/test_api_background_tasks.py`:
+    - execucao de `_run_collection_bg` sem job registrado (nao quebra e mantem logging).
+  - baseline backend atualizada para `18/18` testes passando:
+    - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+
+### Atualizacao desta janela (publicacao + resiliencia E2E)
+- Repositorio publicado no GitHub:
+  - `origin`: `https://github.com/zeluizfaria-design/corporate_intel_monitor.git`
+  - branch `main` sincronizada com `origin/main`.
+- CI remoto em GitHub Actions validado com sucesso nos commits recentes:
+  - `03f19b5` (`fix(collectors): lazy-load optional collector modules`)
+  - `51f9d76` (`docs: update session context and p8 handoff checklist`)
+  - `a2d93cb` (`feat(api): add resilient background collection summary and tests`)
+  - `2df300e` (`test(api): avoid importing main module in background task tests`)
+  - `8093e88` (`chore(ci): install feedparser in backend test dependencies`)
+  - `382da20` (`feat(api): add collection job status endpoint and tracking`)
+- Evolucao de resiliencia no backend:
+  - `POST /collect` agora retorna `job_id`.
+  - novo `GET /collect/{job_id}` para acompanhar status (`queued/running/completed/failed`), erro e resumo.
+  - `_run_collection_bg` com tracking de status/timestamps.
+- Cobertura de testes backend ampliada:
+  - nova suite `tests/test_api_background_tasks.py`
+  - `tests/test_api_integration.py` cobre fluxo de status de coleta por `job_id`
+  - baseline atual: `18/18` testes backend passando.
+- Pipeline local e remoto atualizados para incluir a nova suite de background task:
+  - `scripts/run_ci.ps1`
+  - `.github/workflows/ci.yml`
+  - dependencias de CI backend incluem `pdfplumber`, `selectolax` e `feedparser`.
 
 ### Backend
 - Ajustes em `api/main.py`:
@@ -55,6 +178,7 @@ Validacao executada:
 - `npm install` concluido em `frontend/`.
 - `npm run build` concluido com sucesso (Vite + TypeScript).
 - `npm run test:run` concluido com sucesso (Vitest: 8 testes passando).
+- `npm run test:run` concluido com sucesso (Vitest: 14 testes passando).
 - `npm audit --json` concluido com `0 vulnerabilidades`.
 - Versoes usadas: Node `v24.14.0`, npm `11.9.0`.
 - Ajuste aplicado em `frontend/package.json`: `overrides.esbuild` para mitigar advisory do ecossistema Vite/esbuild.
@@ -83,7 +207,7 @@ Validacao executada:
 
 ## Revalidacao tecnica adicional (2026-03-06)
 - Frontend revalidado:
-  - `npm run test:run`: sucesso (`8/8` testes passando).
+  - `npm run test:run`: sucesso (`14/14` testes passando).
   - `npm run build`: sucesso (build de producao gerado em `frontend/dist`).
 - Smoke de integracao com processos reais reexecutado:
   - `GET /health` -> `200`
@@ -161,18 +285,14 @@ Validacao executada:
   - setup Node 24 + cache npm
   - setup Python 3.13
   - frontend: `npm ci`, `npm run test:run`, `npm run build`
-  - backend: install deps minimas de teste (`fastapi`, `uvicorn`, `duckdb`, `pydantic-settings`, `python-dotenv`, `httpx`)
-  - backend tests: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v`
+- backend: install deps minimas de teste (`fastapi`, `uvicorn`, `duckdb`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `selectolax`, `feedparser`)
+- backend tests: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
 
 ## Estado Git/publicacao (2026-03-06)
-- Repositorio Git inicializado no projeto.
-- Branch atual: `main`.
-- Commits locais criados:
-  - `fe6e3c1` - `chore: setup CI pipelines and automated integration/resilience tests`
-  - `eec6c36` - `chore: track CI helper script and ignore local artifacts`
-- `safe.directory` configurado globalmente para:
-  - `C:/Users/Jose/.claude/projects/corporate_intel_monitor`
-- Estado atual: sem `remote` configurado; pendente apenas `git remote add origin ...` + `git push -u origin main` para ativar CI remoto no GitHub.
+- Repositorio publicado e sincronizado no GitHub.
+- `origin` configurado para `https://github.com/zeluizfaria-design/corporate_intel_monitor.git`.
+- Branch principal: `main` rastreando `origin/main`.
+- CI remoto ativo e validado com sucesso em commits recentes.
 
 ## Retomada rapida (ordem sugerida)
 1. Subir API (`uvicorn api.main:app --host 0.0.0.0 --port 8000`).

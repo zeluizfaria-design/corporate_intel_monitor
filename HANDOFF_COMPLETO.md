@@ -1,6 +1,10 @@
 # Corporate Intelligence Monitor - Handoff Completo
 **Data:** 2026-03-06  
-**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) implementada com backlog tecnico 1-4 concluido; pendente validacao visual/manual final em browser para fechamento de UX. Integracao/resiliencia automatizadas no backend + pipeline CI local e remoto configurados.
+**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) implementada com backlog tecnico 1-4 concluido, polling de coleta por `job_id` integrado na UI e aviso de `sucesso parcial` para falhas de coletores; validacao tecnica final reexecutada nesta continuidade (`scripts/run_ci.ps1` OK, backend `24/24`, frontend `14/14` + build, smoke HTTP real OK). Pendente apenas validacao visual/manual humana em browser para fechamento formal da UX.
+
+## Leitura rapida para nova janela
+- Snapshot curto: `RESUMO_CONTEXTO_JANELA.md`
+- Checklist operacional: `PROXIMA_SESSAO_P8.md`
 
 ---
 
@@ -50,6 +54,10 @@ Funcionalidades implementadas na SPA:
   - sentimento diario
   - eventos no periodo
 - Loading granular por painel com `Promise.allSettled`.
+- Polling de coleta no frontend com `POST /collect` + `GET /collect/{job_id}` ate status final.
+- Card de status da coleta na UI com estado (`queued/running/completed/failed`), `job_id`, ticker, janela e timestamps.
+- Acao manual `Atualizar status` para reconsultar o mesmo `job_id` apos timeout/falha sem disparar novo job.
+- Aviso visual de sucesso parcial quando a coleta finaliza `completed` com `collector_failures` no resumo.
 
 ### Testes de frontend
 - Vitest + React Testing Library configurados.
@@ -61,18 +69,39 @@ Funcionalidades implementadas na SPA:
   - watchlist (adicionar, consultar por clique e remover)
   - degradacao parcial com erro em endpoint especifico
   - erros de `POST/DELETE` da watchlist
+  - coleta com polling por `job_id` (sucesso e falha)
+  - erro ao consultar status de coleta (`GET /collect/{job_id}` com falha)
+  - timeout de polling quando job permanece em `running`
+  - recuperacao via `Atualizar status` apos timeout, concluindo no mesmo `job_id`
+  - sucesso parcial de coleta (`completed` com `collector_failures`) com aviso explicito na UI
 - Comandos:
   - `npm run test` (watch)
   - `npm run test:run` (CI/local one-shot)
+- Revalidacao adicional desta janela:
+  - `npm run test:run` => `14/14` passando
+  - `npm run build` => sucesso
+- Observacao de ambiente (shell atual):
+  - pode ocorrer `EPERM`/`spawn EPERM` em `esbuild` durante `npm ci` ou execucao de scripts no sandbox; no ambiente desta janela, a validacao frontend foi concluida com execucao escalada.
 
 ### Testes backend (novos)
 - Suite de integracao: `tests/test_api_integration.py`
   - valida endpoints principais (`/health`, artigos/resumo, social, watchlist, export CSV)
+  - valida fluxo de coleta com `job_id` em sucesso e falha (`POST /collect` + `GET /collect/{job_id}`)
+  - valida job `completed` com falhas parciais em `collector_failures`
+  - valida `404` para `job_id` inexistente em `GET /collect/{job_id}`
 - Suite de resiliencia: `tests/test_base_collector_resilience.py`
   - valida retry/backoff em `BaseCollector._get` para `429/5xx`, timeout/transport, no-retry em `404`
+- Suite de background tasks: `tests/test_api_background_tasks.py`
+  - valida logging e transicao de estado (`completed`/`failed`) em `_run_collection_bg`
+  - valida execucao resiliente quando `_run_collection_bg` recebe `job_id` inexistente
 - Execucao combinada:
-  - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v`
-  - resultado atual: `11/11` testes passando
+  - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v`
+  - resultado atual: `24/24` testes passando
+  - inclui cenarios E2E de resiliencia com indisponibilidade parcial real:
+    - falha parcial social
+    - falha parcial betting
+    - degradacao multipla social + betting
+    - degradacao multipla total dos coletores secundarios
 
 ### CI
 - Pipeline local:
@@ -82,6 +111,7 @@ Funcionalidades implementadas na SPA:
   - `.github/workflows/ci.yml`
   - dispara em `push` e `pull_request`
   - roda o mesmo fluxo (frontend + backend)
+  - backend deps de CI incluem `pdfplumber`, `selectolax` e `feedparser` para estabilidade dos imports de coletores
 
 ### Runtime frontend validado
 - Node.js LTS instalado: `v24.14.0`.
@@ -114,8 +144,9 @@ Aplicacao no projeto:
    - ordenacao/paginacao do feed
    - visualizacoes por periodo
    - loading granular por painel
-3. Evoluir cenarios de resiliencia E2E de ponta a ponta (indisponibilidade parcial e fallback em execucao integrada).
-4. Publicar repositorio no GitHub (adicionar `origin` e fazer `push`) para ativar o workflow remoto.
+3. Validar manualmente no browser a UX final do polling de status da coleta por `job_id` ja integrado no frontend.
+4. Registrar decisao formal de sign-off (`APROVADO` ou `REPROVADO`) no `CONTEXTO_SESSAO.md`, com evidencias e eventuais ajustes residuais.
+5. Se a porta `5173` estiver ocupada no bootstrap local, validar na URL alternativa exibida pelo Vite (ex.: `http://127.0.0.1:5174`).
 
 ---
 
@@ -151,6 +182,7 @@ Observacao:
 - `GET /articles/{ticker}?days=7`
 - `GET /articles/{ticker}/summary?days=7`
 - `POST /collect`
+- `GET /collect/{job_id}`
 - `GET /social/sources`
 - `GET /social/{ticker}/summary?days=7`
 - `GET /watchlist`
@@ -170,25 +202,28 @@ Observacao:
   - filtro `source_type` no feed OK
   - coleta (`POST /collect`) OK
   - exportacao CSV (`GET /export/{ticker}`) OK
-- Testes de componente atualizados para 8 cenarios, cobrindo sucesso e erro dos fluxos principais da P8.
+- Testes de componente atualizados para 14 cenarios, cobrindo sucesso e erro dos fluxos principais da P8 incluindo polling de coleta, timeout, reconsulta manual e sucesso parcial.
 - `npm audit` zerado (0 vulnerabilidades) apos fix de cadeia `vite/esbuild`.
-- Repositorio Git ja inicializado (`main`) com commits locais e sem `remote` configurado ate o momento.
+- Repositorio Git inicializado (`main`) com `origin` configurado e sincronizado com GitHub.
 
 ---
 
 ## 8. Estado Git
 
 - Branch atual: `main`
-- Commits locais:
-  - `fe6e3c1` - `chore: setup CI pipelines and automated integration/resilience tests`
-  - `eec6c36` - `chore: track CI helper script and ignore local artifacts`
-- `safe.directory` configurado globalmente para o path do projeto.
-- Proximo passo:
-  - `git remote add origin <URL_DO_REPOSITORIO_GITHUB>`
-  - `git push -u origin main`
+- Remoto configurado:
+  - `origin` -> `https://github.com/zeluizfaria-design/corporate_intel_monitor.git`
+- `main` sincronizada com `origin/main`.
+- CI remoto executando automaticamente e verde nos commits recentes (`03f19b5`, `51f9d76`, `a2d93cb`, `2df300e`, `8093e88`, `382da20`).
 
 ---
 
 ## 9. Proxima acao recomendada
 
-Executar checklist de validacao manual em `PROXIMA_SESSAO_P8.md` para fechar a P8; em seguida publicar no GitHub para ativar CI remoto automaticamente.
+Executar checklist de validacao manual em `PROXIMA_SESSAO_P8.md` para fechar a P8 com foco na UX visual do polling de status por `job_id` ja implementado.
+
+## 10. Guia rapido para nova janela de contexto
+1. Ler `RESUMO_CONTEXTO_JANELA.md` e `PROXIMA_SESSAO_P8.md`.
+2. Subir backend e frontend pelos comandos da secao 5.
+3. Rodar checklist manual de UX (secao "Smoke tests manuais").
+4. Registrar resultado final no `CONTEXTO_SESSAO.md`.
