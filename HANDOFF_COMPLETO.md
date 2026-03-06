@@ -1,6 +1,6 @@
 # Corporate Intelligence Monitor - Handoff Completo
 **Data:** 2026-03-06  
-**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) implementada com backlog tecnico 1-4 concluido; pendente validacao visual/manual final em browser para fechamento de UX.
+**Estado geral:** P1-P7, P9 e P10 concluidos. P8 (Frontend React) implementada com backlog tecnico 1-4 concluido; pendente validacao visual/manual final em browser para fechamento de UX. Integracao/resiliencia automatizadas no backend + pipeline CI local e remoto configurados.
 
 ---
 
@@ -65,6 +65,24 @@ Funcionalidades implementadas na SPA:
   - `npm run test` (watch)
   - `npm run test:run` (CI/local one-shot)
 
+### Testes backend (novos)
+- Suite de integracao: `tests/test_api_integration.py`
+  - valida endpoints principais (`/health`, artigos/resumo, social, watchlist, export CSV)
+- Suite de resiliencia: `tests/test_base_collector_resilience.py`
+  - valida retry/backoff em `BaseCollector._get` para `429/5xx`, timeout/transport, no-retry em `404`
+- Execucao combinada:
+  - `python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v`
+  - resultado atual: `11/11` testes passando
+
+### CI
+- Pipeline local:
+  - `scripts/run_ci.ps1`
+  - roda frontend (`npm ci`, `test:run`, `build`) + backend tests (`unittest`)
+- Pipeline remoto:
+  - `.github/workflows/ci.yml`
+  - dispara em `push` e `pull_request`
+  - roda o mesmo fluxo (frontend + backend)
+
 ### Runtime frontend validado
 - Node.js LTS instalado: `v24.14.0`.
 - npm instalado: `11.9.0`.
@@ -96,7 +114,8 @@ Aplicacao no projeto:
    - ordenacao/paginacao do feed
    - visualizacoes por periodo
    - loading granular por painel
-3. Iniciar testes de integracao frontend/backend em ambiente controlado.
+3. Evoluir cenarios de resiliencia E2E de ponta a ponta (indisponibilidade parcial e fallback em execucao integrada).
+4. Publicar repositorio no GitHub (adicionar `origin` e fazer `push`) para ativar o workflow remoto.
 
 ---
 
@@ -113,11 +132,16 @@ cd frontend
 npm install
 npm run test:run
 npm run dev
+
+# CI local completo
+cd ..
+powershell -ExecutionPolicy Bypass -File .\scripts\run_ci.ps1
 ```
 
 Observacao:
 - Dependencias Python (`fastapi`, `uvicorn`) ja estao instaladas no ambiente atual.
 - Se `node`/`npm` nao forem reconhecidos no shell, usar caminho completo `C:\Program Files\nodejs\npm.cmd`.
+- Para iteracao rapida sem reinstalar pacotes frontend: `.\scripts\run_ci.ps1 -SkipNpmCi`.
 
 ---
 
@@ -148,10 +172,23 @@ Observacao:
   - exportacao CSV (`GET /export/{ticker}`) OK
 - Testes de componente atualizados para 8 cenarios, cobrindo sucesso e erro dos fluxos principais da P8.
 - `npm audit` zerado (0 vulnerabilidades) apos fix de cadeia `vite/esbuild`.
-- Projeto nao esta em repositorio git no caminho atual (sem `.git`).
+- Repositorio Git ja inicializado (`main`) com commits locais e sem `remote` configurado ate o momento.
 
 ---
 
-## 8. Proxima acao recomendada
+## 8. Estado Git
 
-Executar checklist de validacao manual em `PROXIMA_SESSAO_P8.md` para fechar a P8; em seguida iniciar testes de integracao frontend/backend.
+- Branch atual: `main`
+- Commits locais:
+  - `fe6e3c1` - `chore: setup CI pipelines and automated integration/resilience tests`
+  - `eec6c36` - `chore: track CI helper script and ignore local artifacts`
+- `safe.directory` configurado globalmente para o path do projeto.
+- Proximo passo:
+  - `git remote add origin <URL_DO_REPOSITORIO_GITHUB>`
+  - `git push -u origin main`
+
+---
+
+## 9. Proxima acao recomendada
+
+Executar checklist de validacao manual em `PROXIMA_SESSAO_P8.md` para fechar a P8; em seguida publicar no GitHub para ativar CI remoto automaticamente.

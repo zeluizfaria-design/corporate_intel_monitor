@@ -16,6 +16,7 @@ Fechar a P8 com validacao visual/manual final em browser e registrar ajustes res
   - item 4: testes automatizados de componentes (Vitest + RTL)
 - `npm run test:run` executado com sucesso (8 testes passando).
 - `npm audit --json` executado com sucesso (0 vulnerabilidades).
+- Repositorio Git inicializado em `main` com commits locais e CI remoto configurado em `.github/workflows/ci.yml`.
 - Pendencia remanescente: validacao manual visual em browser para UX/interacoes.
 
 ## Checklist de bootstrap
@@ -82,6 +83,13 @@ Observacao:
 3. Pipeline CI local implementado em `scripts/run_ci.ps1` e validado (frontend + backend).
 4. CI remoto portado para GitHub Actions em `.github/workflows/ci.yml` (push + pull_request).
 5. Evoluir para cenarios de resiliencia E2E de ponta a ponta (indisponibilidade parcial de coletores/endpoints em execucao integrada).
+
+## Publicacao no GitHub (pendente)
+1. Configurar remoto:
+   - `git remote add origin <URL_DO_REPOSITORIO_GITHUB>`
+2. Publicar branch:
+   - `git push -u origin main`
+3. Confirmar no GitHub Actions a execucao do workflow `CI`.
 
 ## Notas de seguranca
 - Nao colocar segredos no frontend.

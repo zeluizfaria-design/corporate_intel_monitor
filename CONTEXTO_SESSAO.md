@@ -164,6 +164,16 @@ Validacao executada:
   - backend: install deps minimas de teste (`fastapi`, `uvicorn`, `duckdb`, `pydantic-settings`, `python-dotenv`, `httpx`)
   - backend tests: `python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v`
 
+## Estado Git/publicacao (2026-03-06)
+- Repositorio Git inicializado no projeto.
+- Branch atual: `main`.
+- Commits locais criados:
+  - `fe6e3c1` - `chore: setup CI pipelines and automated integration/resilience tests`
+  - `eec6c36` - `chore: track CI helper script and ignore local artifacts`
+- `safe.directory` configurado globalmente para:
+  - `C:/Users/Jose/.claude/projects/corporate_intel_monitor`
+- Estado atual: sem `remote` configurado; pendente apenas `git remote add origin ...` + `git push -u origin main` para ativar CI remoto no GitHub.
+
 ## Retomada rapida (ordem sugerida)
 1. Subir API (`uvicorn api.main:app --host 0.0.0.0 --port 8000`).
 2. Subir frontend (`npm run dev`; se PowerShell bloquear scripts, usar `npm.cmd run dev`).
