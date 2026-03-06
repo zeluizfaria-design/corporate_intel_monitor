@@ -9,7 +9,115 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 import api.main as api_main
+import main as main_module
+from collectors.base_collector import RawArticle
 from storage.database import Database
+
+
+class _NoopMaterialFactsRouter:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str, days_back: int = 30, **kwargs):
+        if False:
+            yield
+
+
+class _NoopNewsCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str):
+        if False:
+            yield
+
+
+class _NoopBRInsiderCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str, days_back: int = 30):
+        if False:
+            yield
+
+
+class _HealthySocialCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str):
+        now = datetime.now(UTC)
+        yield RawArticle(
+            source="social/healthy",
+            source_type="social",
+            url=f"https://example.com/social/{ticker}",
+            title=f"{ticker} healthy social signal",
+            content="Collector available",
+            published_at=now,
+            company_ticker=ticker.upper(),
+        )
+
+
+class _FailingSocialCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str):
+        raise RuntimeError("simulated collector outage")
+        if False:
+            yield
+
+
+class _HealthyBettingCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str):
+        now = datetime.now(UTC)
+        yield RawArticle(
+            source="betting/healthy",
+            source_type="betting",
+            url=f"https://example.com/betting/{ticker}",
+            title=f"{ticker} healthy betting signal",
+            content="Collector available",
+            published_at=now,
+            company_ticker=ticker.upper(),
+        )
+
+
+class _FailingBettingCollector:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return None
+
+    async def collect(self, ticker: str):
+        raise RuntimeError("simulated betting collector outage")
+        if False:
+            yield
+
+
+class _NoopSentimentAnalyzer:
+    pass
 
 
 class ApiIntegrationTests(unittest.TestCase):
@@ -160,6 +268,234 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(job["status"], "completed")
         self.assertEqual(job["ticker"], "NVDA")
         self.assertEqual(job["summary"]["saved_articles"], 2)
+
+    def test_collect_job_status_completed_with_partial_failures(self) -> None:
+        with patch(
+            "api.main._get_run_collection",
+            return_value=AsyncMock(
+                return_value={
+                    "ticker": "NVDA",
+                    "days_back": 7,
+                    "saved_articles": 2,
+                    "collector_failures": [{"collector": "StockTwitsCollector", "error": "403 Forbidden"}],
+                }
+            ),
+        ):
+            start = self.client.post("/collect", json={"ticker": "NVDA", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(len(job["summary"]["collector_failures"]), 1)
+        self.assertEqual(job["summary"]["collector_failures"][0]["collector"], "StockTwitsCollector")
+
+    def test_collect_job_status_failed(self) -> None:
+        with patch(
+            "api.main._get_run_collection",
+            return_value=AsyncMock(side_effect=RuntimeError("collector exploded")),
+        ):
+            start = self.client.post("/collect", json={"ticker": "NVDA", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "failed")
+        self.assertEqual(job["ticker"], "NVDA")
+        self.assertEqual(job["error"], "collector exploded")
+
+    def test_collect_job_not_found(self) -> None:
+        status = self.client.get("/collect/job-does-not-exist")
+        self.assertEqual(status.status_code, 404)
+        self.assertIn("not found", status.json()["detail"].lower())
+
+    def test_collect_trigger_cleans_stale_finished_jobs(self) -> None:
+        stale_time = (datetime.now(UTC).replace(microsecond=0)).isoformat()
+        api_main._collection_jobs["old-job"] = {
+            "job_id": "old-job",
+            "status": "failed",
+            "ticker": "NVDA",
+            "days_back": 7,
+            "queued_at": "2026-01-01T00:00:00+00:00",
+            "started_at": "2026-01-01T00:00:01+00:00",
+            "finished_at": "2026-01-01T00:00:02+00:00",
+            "error": "timeout",
+            "summary": None,
+        }
+        api_main._collection_jobs["recent-job"] = {
+            "job_id": "recent-job",
+            "status": "running",
+            "ticker": "NVDA",
+            "days_back": 7,
+            "queued_at": stale_time,
+            "started_at": stale_time,
+            "finished_at": None,
+            "error": None,
+            "summary": None,
+        }
+
+        with patch(
+            "api.main._get_run_collection",
+            return_value=AsyncMock(
+                return_value={
+                    "ticker": "NVDA",
+                    "days_back": 7,
+                    "saved_articles": 2,
+                    "collector_failures": [],
+                }
+            ),
+        ):
+            response = self.client.post("/collect", json={"ticker": "NVDA", "days_back": 7})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("old-job", api_main._collection_jobs)
+        self.assertIn("recent-job", api_main._collection_jobs)
+
+    def test_collect_job_status_completed_with_real_partial_collector_outage(self) -> None:
+        with (
+            patch("api.main._get_run_collection", return_value=main_module.run_collection),
+            patch("main.MaterialFactsRouter", return_value=_NoopMaterialFactsRouter()),
+            patch("main.NewsCollector", return_value=_NoopNewsCollector()),
+            patch(
+                "main.build_social_collectors",
+                return_value=[_HealthySocialCollector(), _FailingSocialCollector()],
+            ),
+            patch("main.build_betting_collectors", return_value=[]),
+            patch("main.CVMInsiderCollector", return_value=_NoopBRInsiderCollector()),
+            patch("main.SentimentAnalyzer", return_value=_NoopSentimentAnalyzer()),
+            patch("main.detect_market", return_value="BR"),
+            patch("main._save", return_value=True),
+        ):
+            start = self.client.post("/collect", json={"ticker": "PETR4", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["summary"]["saved_articles"], 1)
+        self.assertEqual(len(job["summary"]["collector_failures"]), 1)
+        self.assertEqual(
+            job["summary"]["collector_failures"][0]["collector"],
+            "_FailingSocialCollector",
+        )
+        self.assertIn(
+            "simulated collector outage",
+            job["summary"]["collector_failures"][0]["error"],
+        )
+
+    def test_collect_job_status_completed_with_real_partial_betting_outage(self) -> None:
+        with (
+            patch("api.main._get_run_collection", return_value=main_module.run_collection),
+            patch("main.MaterialFactsRouter", return_value=_NoopMaterialFactsRouter()),
+            patch("main.NewsCollector", return_value=_NoopNewsCollector()),
+            patch("main.build_social_collectors", return_value=[]),
+            patch(
+                "main.build_betting_collectors",
+                return_value=[_HealthyBettingCollector(), _FailingBettingCollector()],
+            ),
+            patch("main.CVMInsiderCollector", return_value=_NoopBRInsiderCollector()),
+            patch("main.SentimentAnalyzer", return_value=_NoopSentimentAnalyzer()),
+            patch("main.detect_market", return_value="BR"),
+            patch("main._save", return_value=True),
+        ):
+            start = self.client.post("/collect", json={"ticker": "PETR4", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["summary"]["saved_articles"], 1)
+        self.assertEqual(len(job["summary"]["collector_failures"]), 1)
+        self.assertEqual(
+            job["summary"]["collector_failures"][0]["collector"],
+            "_FailingBettingCollector",
+        )
+        self.assertIn(
+            "simulated betting collector outage",
+            job["summary"]["collector_failures"][0]["error"],
+        )
+
+    def test_collect_job_status_completed_with_multiple_partial_outages(self) -> None:
+        with (
+            patch("api.main._get_run_collection", return_value=main_module.run_collection),
+            patch("main.MaterialFactsRouter", return_value=_NoopMaterialFactsRouter()),
+            patch("main.NewsCollector", return_value=_NoopNewsCollector()),
+            patch(
+                "main.build_social_collectors",
+                return_value=[_HealthySocialCollector(), _FailingSocialCollector()],
+            ),
+            patch(
+                "main.build_betting_collectors",
+                return_value=[_HealthyBettingCollector(), _FailingBettingCollector()],
+            ),
+            patch("main.CVMInsiderCollector", return_value=_NoopBRInsiderCollector()),
+            patch("main.SentimentAnalyzer", return_value=_NoopSentimentAnalyzer()),
+            patch("main.detect_market", return_value="BR"),
+            patch("main._save", return_value=True),
+        ):
+            start = self.client.post("/collect", json={"ticker": "PETR4", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["summary"]["saved_articles"], 2)
+        self.assertEqual(len(job["summary"]["collector_failures"]), 2)
+
+        failures = {entry["collector"]: entry["error"] for entry in job["summary"]["collector_failures"]}
+        self.assertIn("_FailingSocialCollector", failures)
+        self.assertIn("_FailingBettingCollector", failures)
+        self.assertIn("simulated collector outage", failures["_FailingSocialCollector"])
+        self.assertIn("simulated betting collector outage", failures["_FailingBettingCollector"])
+
+    def test_collect_job_status_completed_with_total_secondary_outage(self) -> None:
+        with (
+            patch("api.main._get_run_collection", return_value=main_module.run_collection),
+            patch("main.MaterialFactsRouter", return_value=_NoopMaterialFactsRouter()),
+            patch("main.NewsCollector", return_value=_NoopNewsCollector()),
+            patch("main.build_social_collectors", return_value=[_FailingSocialCollector()]),
+            patch("main.build_betting_collectors", return_value=[_FailingBettingCollector()]),
+            patch("main.CVMInsiderCollector", return_value=_NoopBRInsiderCollector()),
+            patch("main.SentimentAnalyzer", return_value=_NoopSentimentAnalyzer()),
+            patch("main.detect_market", return_value="BR"),
+            patch("main._save", return_value=True),
+        ):
+            start = self.client.post("/collect", json={"ticker": "PETR4", "days_back": 7})
+
+        self.assertEqual(start.status_code, 200)
+        payload = start.json()
+        self.assertIn("job_id", payload)
+
+        status = self.client.get(f"/collect/{payload['job_id']}")
+        self.assertEqual(status.status_code, 200)
+        job = status.json()
+        self.assertEqual(job["status"], "completed")
+        self.assertEqual(job["summary"]["saved_articles"], 0)
+        self.assertEqual(len(job["summary"]["collector_failures"]), 2)
+
+        failures = {entry["collector"]: entry["error"] for entry in job["summary"]["collector_failures"]}
+        self.assertIn("_FailingSocialCollector", failures)
+        self.assertIn("_FailingBettingCollector", failures)
 
 
 if __name__ == "__main__":

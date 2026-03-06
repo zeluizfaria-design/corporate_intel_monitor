@@ -103,6 +103,63 @@ button:disabled {
   font-size: 0.88rem;
 }
 
+.collection-status {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 10px;
+  margin-top: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.collection-status h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.status-pill {
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 9px;
+  text-transform: uppercase;
+}
+
+.status-pill.status-queued {
+  background: rgba(156, 169, 200, 0.2);
+  color: #d2dcf8;
+}
+
+.status-pill.status-running {
+  background: rgba(95, 178, 255, 0.2);
+  color: #abd8ff;
+}
+
+.status-pill.status-completed {
+  background: rgba(55, 211, 159, 0.2);
+  color: #99f4d8;
+}
+
+.status-pill.status-failed {
+  background: rgba(255, 111, 125, 0.2);
+  color: #ffc0c8;
+}
+
+.error-inline {
+  color: #ffd9dd;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+}
+
+.warning-inline {
+  color: #ffe8bf;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+}
+
+.collection-actions {
+  margin-top: 8px;
+}
+
 .grid.metrics {
   display: grid;
   gap: 12px;

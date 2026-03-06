@@ -1,4 +1,12 @@
-import type { Article, SocialSourceStatus, SocialSummary, Summary, WatchlistItem } from './types'
+import type {
+  Article,
+  CollectionJob,
+  CollectionTriggerResponse,
+  SocialSourceStatus,
+  SocialSummary,
+  Summary,
+  WatchlistItem,
+} from './types'
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path)
@@ -72,6 +80,8 @@ export const api = {
       const payload = await response.text()
       throw new Error(`${response.status} ${response.statusText} - ${payload.slice(0, 220)}`)
     }
-    return response.json()
+    return response.json() as Promise<CollectionTriggerResponse>
   },
+
+  collectionStatus: (jobId: string) => getJson<CollectionJob>(`/collect/${encodeURIComponent(jobId)}`),
 }

@@ -48,3 +48,24 @@ export type WatchlistItem = {
   is_dual: boolean
   us_ticker?: string | null
 }
+
+export type CollectionJobStatus = 'queued' | 'running' | 'completed' | 'failed'
+
+export type CollectionTriggerResponse = {
+  status: string
+  job_id: string
+  ticker: string
+  days_back: number
+}
+
+export type CollectionJob = {
+  job_id: string
+  status: CollectionJobStatus
+  ticker: string
+  days_back: number
+  queued_at: string
+  started_at?: string | null
+  finished_at?: string | null
+  error?: string | null
+  summary?: Record<string, unknown> | null
+}

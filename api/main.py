@@ -2,7 +2,7 @@
 import io
 import csv
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 from uuid import uuid4
 
@@ -22,6 +22,8 @@ app = FastAPI(
 _db = Database()
 _settings = Settings()
 _collection_jobs: dict[str, dict] = {}
+_COLLECTION_JOB_RETENTION_HOURS = 24
+_COLLECTION_JOB_MAX_ENTRIES = 500
 
 # Seed watchlist se estiver vazia
 _db.seed_watchlist(_settings.target_tickers, _settings.dual_listed_map)
@@ -74,6 +76,56 @@ class CollectionStatusResponse(BaseModel):
     finished_at: Optional[str] = None
     error: Optional[str] = None
     summary: Optional[dict] = None
+
+
+def _parse_job_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _job_reference_time(job: dict) -> datetime:
+    return (
+        _parse_job_datetime(job.get("finished_at"))
+        or _parse_job_datetime(job.get("started_at"))
+        or _parse_job_datetime(job.get("queued_at"))
+        or datetime.min.replace(tzinfo=UTC)
+    )
+
+
+def _cleanup_collection_jobs() -> None:
+    if not _collection_jobs:
+        return
+
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=_COLLECTION_JOB_RETENTION_HOURS)
+    stale_ids: list[str] = []
+
+    for job_id, job in _collection_jobs.items():
+        if job.get("status") not in {"completed", "failed"}:
+            continue
+        if _job_reference_time(job) < cutoff:
+            stale_ids.append(job_id)
+
+    for job_id in stale_ids:
+        _collection_jobs.pop(job_id, None)
+
+    overflow = len(_collection_jobs) - _COLLECTION_JOB_MAX_ENTRIES
+    if overflow <= 0:
+        return
+
+    ordered_jobs = sorted(
+        _collection_jobs.items(),
+        key=lambda item: _job_reference_time(item[1]),
+    )
+    for job_id, _ in ordered_jobs:
+        if overflow <= 0:
+            break
+        _collection_jobs.pop(job_id, None)
+        overflow -= 1
 
 
 @app.get("/health")
@@ -132,6 +184,7 @@ def get_summary(ticker: str, days: int = Query(default=7, ge=1, le=30)):
 @app.post("/collect")
 async def trigger_collection(request: CollectionRequest, background_tasks: BackgroundTasks):
     """Dispara coleta assíncrona para um ticker."""
+    _cleanup_collection_jobs()
     ticker_upper = request.ticker.upper()
     job_id = uuid4().hex
     _collection_jobs[job_id] = {

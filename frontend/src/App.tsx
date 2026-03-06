@@ -1,12 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from './api'
-import type { Article, SocialSourceStatus, SocialSummary, Summary, WatchlistItem } from './types'
+import type {
+  Article,
+  CollectionJob,
+  CollectionJobStatus,
+  SocialSourceStatus,
+  SocialSummary,
+  Summary,
+  WatchlistItem,
+} from './types'
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error'
 type FeedSort = 'published_desc' | 'published_asc' | 'source_asc' | 'title_asc'
 
 const DEFAULT_TICKER = 'NVDA'
 const FEED_PAGE_SIZE = 20
+const COLLECTION_POLL_INTERVAL_MS = 300
+const COLLECTION_MAX_POLLS = 30
 
 function dayKey(value: string): string {
   const date = new Date(value)
@@ -55,6 +65,33 @@ function sourceTypeLabel(sourceType: string): string {
   return 'News'
 }
 
+function collectionStatusLabel(status: CollectionJobStatus): string {
+  if (status === 'queued') return 'na fila'
+  if (status === 'running') return 'em execucao'
+  if (status === 'completed') return 'concluida'
+  return 'falhou'
+}
+
+function collectionStatusClass(status: CollectionJobStatus): string {
+  if (status === 'queued') return 'status-queued'
+  if (status === 'running') return 'status-running'
+  if (status === 'completed') return 'status-completed'
+  return 'status-failed'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+function getCollectorFailureCount(job: CollectionJob | null): number {
+  if (!job || !job.summary || typeof job.summary !== 'object') return 0
+  const value = (job.summary as Record<string, unknown>).collector_failures
+  if (!Array.isArray(value)) return 0
+  return value.length
+}
+
 export default function App() {
   const [ticker, setTicker] = useState(DEFAULT_TICKER)
   const [days, setDays] = useState(7)
@@ -79,12 +116,15 @@ export default function App() {
   const [collecting, setCollecting] = useState(false)
   const [watchlistLoading, setWatchlistLoading] = useState(false)
   const [watchlistBusy, setWatchlistBusy] = useState(false)
+  const [collectionJob, setCollectionJob] = useState<CollectionJob | null>(null)
+  const [collectionStatusRefreshing, setCollectionStatusRefreshing] = useState(false)
   const [panelLoading, setPanelLoading] = useState({
     summary: false,
     feed: false,
     socialSummary: false,
     socialSources: false,
   })
+  const collectorFailureCount = useMemo(() => getCollectorFailureCount(collectionJob), [collectionJob])
 
   async function loadWatchlist() {
     setWatchlistLoading(true)
@@ -253,6 +293,18 @@ export default function App() {
     }
   }, [currentPage, totalPages])
 
+  async function pollCollectionStatus(jobId: string): Promise<CollectionJob> {
+    for (let attempt = 1; attempt <= COLLECTION_MAX_POLLS; attempt += 1) {
+      const job = await api.collectionStatus(jobId)
+      setCollectionJob(job)
+      if (job.status === 'completed' || job.status === 'failed') {
+        return job
+      }
+      await sleep(COLLECTION_POLL_INTERVAL_MS)
+    }
+    throw new Error(`Timeout ao acompanhar coleta ${jobId}.`)
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = ticker.trim().toUpperCase()
@@ -264,13 +316,45 @@ export default function App() {
   async function onRunCollection() {
     try {
       setCollecting(true)
-      await api.triggerCollection(ticker, 30)
+      setError('')
+      const trigger = await api.triggerCollection(ticker, 30)
+      const job = await pollCollectionStatus(trigger.job_id)
+      if (job.status === 'failed') {
+        throw new Error(job.error || `Job ${job.job_id} falhou sem detalhe de erro.`)
+      }
       await loadAll(ticker, days, sourceFilter)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao disparar coleta.')
+      setError(err instanceof Error ? `Falha ao disparar coleta: ${err.message}` : 'Falha ao disparar coleta.')
       setState('error')
     } finally {
       setCollecting(false)
+    }
+  }
+
+  async function onRefreshCollectionStatus() {
+    if (!collectionJob) return
+    try {
+      setCollectionStatusRefreshing(true)
+      setError('')
+      const latest = await api.collectionStatus(collectionJob.job_id)
+      setCollectionJob(latest)
+      if (latest.status === 'completed') {
+        await loadAll(latest.ticker, days, sourceFilter)
+        return
+      }
+      if (latest.status === 'failed') {
+        setError(`Coleta ${latest.job_id} falhou: ${latest.error || 'erro desconhecido'}`)
+        setState('error')
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Falha ao consultar status da coleta: ${err.message}`
+          : 'Falha ao consultar status da coleta.',
+      )
+      setState('error')
+    } finally {
+      setCollectionStatusRefreshing(false)
     }
   }
 
@@ -388,6 +472,41 @@ export default function App() {
         <p className="note">
           Seguranca: credenciais ficam apenas no backend. Frontend nao usa chaves de API.
         </p>
+        {collectionJob && (
+          <section className="collection-status" role="status" aria-live="polite">
+            <div className="row">
+              <h3>Status da coleta</h3>
+              <span className={`status-pill ${collectionStatusClass(collectionJob.status)}`}>
+                {collectionStatusLabel(collectionJob.status)}
+              </span>
+            </div>
+            <p className="note">
+              Job: <strong>{collectionJob.job_id}</strong> | Ticker: <strong>{collectionJob.ticker}</strong> | Janela
+              coleta: <strong>{collectionJob.days_back} dias</strong>
+            </p>
+            <p className="muted">
+              Enfileirada em: {formatDate(collectionJob.queued_at)} | Inicio:{' '}
+              {collectionJob.started_at ? formatDate(collectionJob.started_at) : '-'} | Fim:{' '}
+              {collectionJob.finished_at ? formatDate(collectionJob.finished_at) : '-'}
+            </p>
+            <div className="collection-actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => void onRefreshCollectionStatus()}
+                disabled={collecting || collectionStatusRefreshing}
+              >
+                {collectionStatusRefreshing ? 'Atualizando status...' : 'Atualizar status'}
+              </button>
+            </div>
+            {collectionJob.status === 'completed' && collectorFailureCount > 0 && (
+              <p className="warning-inline">
+                Coleta concluida com falhas parciais em {collectorFailureCount} coletor(es).
+              </p>
+            )}
+            {collectionJob.error && <p className="error-inline">Falha: {collectionJob.error}</p>}
+          </section>
+        )}
         {loginEmail && (
           <p className="note">
             Email de apoio salvo localmente: <strong>{maskEmail(loginEmail)}</strong>
