@@ -12,6 +12,7 @@ env/
 
 # Local settings and secrets
 .env
+.mcp.json
 
 # Databases and runtime artifacts
 data/*.duckdb
@@ -26,10 +27,15 @@ frontend/.vite/
 # Build artifacts
 *.tsbuildinfo
 
+# Local large model assets
+models/
+
 # Logs and temporary files
 *.log
 tmp_*.log
 *.tmp
+*.docx
+~$*.docx
 
 # OS/editor artifacts
 .DS_Store
