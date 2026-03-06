@@ -44,4 +44,4 @@ jobs:
           pip install fastapi uvicorn duckdb pydantic-settings python-dotenv httpx pdfplumber selectolax
 
       - name: Run backend tests
-        run: python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v
+        run: python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v

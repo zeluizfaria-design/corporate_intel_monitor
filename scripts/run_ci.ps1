@@ -59,7 +59,7 @@ finally {
 Write-Host "[CI] Running backend tests"
 Push-Location $projectRoot
 try {
-    python -m unittest tests.test_base_collector_resilience tests.test_api_integration -v
+    python -m unittest tests.test_base_collector_resilience tests.test_api_integration tests.test_api_background_tasks -v
     Assert-LastExitCode "backend tests"
 }
 finally {

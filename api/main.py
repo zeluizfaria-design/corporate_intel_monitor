@@ -323,7 +323,7 @@ def get_dashboard(
 <body>
   <div class="header">
     <h1>Corporate Intelligence — {ticker_upper}</h1>
-    <p>Últimos {days} dias &nbsp;|&nbsp; Insiders + Políticos &nbsp;|&nbsp; Gerado em {datetime.utcnow().strftime("%d/%m/%Y %H:%M")} UTC</p>
+    <p>Últimos {days} dias &nbsp;|&nbsp; Insiders + Políticos &nbsp;|&nbsp; Gerado em {datetime.now(UTC).strftime("%d/%m/%Y %H:%M")} UTC</p>
   </div>
   <div class="stats">
     <div class="stat"><div class="num">{total}</div><div class="lbl">Total de transações</div></div>

@@ -1,7 +1,7 @@
 """Unit tests for retry/backoff behavior in BaseCollector._get."""
 
 import unittest
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -18,7 +18,7 @@ class _DummyCollector(BaseCollector):
                 url="https://example.com",
                 title="dummy",
                 content="dummy",
-                published_at=datetime.utcnow(),
+                published_at=datetime.now(UTC),
             )
 
 
