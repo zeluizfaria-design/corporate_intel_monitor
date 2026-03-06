@@ -1,0 +1,39 @@
+# HTTP & Scraping
+httpx>=0.27
+playwright>=1.44
+selectolax>=0.3
+feedparser>=6.0
+pdfplumber>=0.11
+websockets>=12.0
+
+# NLP & ML
+transformers>=4.41
+torch>=2.3
+spacy>=3.7
+
+# Redes Sociais
+praw>=7.7          # Reddit
+telethon>=1.36     # Telegram
+discord.py>=2.3    # Discord
+
+# Apostas
+betfairlightweight>=3.18  # Betfair
+iqoptionapi>=1.0.0         # IQ Option (opcional)
+
+# Storage
+duckdb>=0.10
+
+# Config & API
+pydantic-settings>=2.2
+python-dotenv>=1.0
+fastapi>=0.111
+uvicorn>=0.30
+
+# Scheduler
+apscheduler>=3.10
+
+# Deduplicação
+datasketch>=1.6
+
+# Claude API
+anthropic>=0.28
